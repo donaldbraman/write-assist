@@ -22,6 +22,7 @@ from write_assist.agents import (
     JudgeResult,
 )
 from write_assist.agents.models import DocumentType, LoadedSource, LocalCitation, Provider
+from write_assist.artifacts import ArtifactStore
 from write_assist.citations import CiteAssistClient, CiteAssistUnavailable
 from write_assist.pipeline.models import (
     PhaseResult,
@@ -64,6 +65,8 @@ class WritingPipeline:
         cite_assist_library_id: int | None = None,
         use_cite_assist: bool = True,
         google_key_path: str | None = None,
+        output_dir: Path | str | None = None,
+        save_artifacts: bool = True,
     ):
         """
         Initialize the pipeline.
@@ -75,6 +78,8 @@ class WritingPipeline:
             cite_assist_library_id: Zotero library ID for cite-assist queries
             use_cite_assist: Whether to query cite-assist for local citations
             google_key_path: Path to Google service account key for Google Docs access
+            output_dir: Directory to save artifacts (default: ./runs)
+            save_artifacts: Whether to save artifacts to disk (default: True)
         """
         self.project_root = project_root
         self.models = models
@@ -82,6 +87,8 @@ class WritingPipeline:
         self.cite_assist_url = cite_assist_url
         self.cite_assist_library_id = cite_assist_library_id
         self.google_key_path = google_key_path
+        self.output_dir = Path(output_dir) if output_dir else Path("./runs")
+        self.save_artifacts = save_artifacts
 
         # Initialize agents
         self.drafter = DrafterAgent(project_root=project_root, models=models)
@@ -127,6 +134,23 @@ class WritingPipeline:
         total_start = time.perf_counter()
 
         # =====================================================================
+        # Initialize artifact storage
+        # =====================================================================
+        artifact_store: ArtifactStore | None = None
+        if self.save_artifacts:
+            artifact_store = ArtifactStore(
+                output_dir=self.output_dir,
+                topic=topic,
+                started_at=started_at,
+            ).initialize()
+            self._notify(
+                on_progress,
+                "artifacts",
+                "starting",
+                message=f"Saving artifacts to {artifact_store.run_dir}",
+            )
+
+        # =====================================================================
         # Pre-Phase 1: Load source documents
         # =====================================================================
         source_documents: list[LoadedSource] = []
@@ -168,6 +192,10 @@ class WritingPipeline:
             local_citations=local_citations,
         )
 
+        # Save input artifacts
+        if artifact_store:
+            artifact_store.save_input(drafter_input)
+
         # =====================================================================
         # Phase 1: Drafting
         # =====================================================================
@@ -195,8 +223,17 @@ class WritingPipeline:
             message=f"Drafting complete: {drafting_phase.success_count}/3 succeeded",
         )
 
+        # Save draft artifacts
+        if artifact_store and draft_parallel_result.successful:
+            artifact_store.save_drafts(draft_parallel_result.successful)
+
         # Check if we have enough drafts to continue
         if drafting_phase.success_count < 1:
+            if artifact_store:
+                artifact_store.finalize(
+                    execution_time_ms=(time.perf_counter() - total_start) * 1000,
+                    phase_results={"drafting": "failed"},
+                )
             return self._create_failed_result(
                 drafter_input, drafting_phase, started_at, total_start
             )
@@ -237,8 +274,17 @@ class WritingPipeline:
             message=f"Editing complete: {editing_phase.success_count}/3 succeeded",
         )
 
+        # Save edit artifacts
+        if artifact_store and edit_parallel_result.successful:
+            artifact_store.save_edits(edit_parallel_result.successful)
+
         # Check if we have enough edits to continue
         if editing_phase.success_count < 1:
+            if artifact_store:
+                artifact_store.finalize(
+                    execution_time_ms=(time.perf_counter() - total_start) * 1000,
+                    phase_results={"drafting": "completed", "editing": "failed"},
+                )
             return self._create_partial_result(
                 drafter_input,
                 drafting_phase,
@@ -294,6 +340,27 @@ class WritingPipeline:
         # Get recommended edit (top-ranked by consensus)
         recommended = self._get_recommended_edit(consensus, edit_parallel_result.successful)
 
+        # Save judgment and final artifacts
+        final_artifact_path = None
+        if artifact_store:
+            if judge_parallel_result.successful:
+                artifact_store.save_judgments(judge_parallel_result.successful, consensus)
+            artifact_store.save_final(recommended, consensus)
+            final_artifact_path = artifact_store.finalize(
+                execution_time_ms=total_time,
+                phase_results={
+                    "drafting": "completed",
+                    "editing": "completed",
+                    "judging": "completed",
+                },
+            )
+            self._notify(
+                on_progress,
+                "artifacts",
+                "completed",
+                message=f"Artifacts saved to {final_artifact_path}",
+            )
+
         return PipelineResult(
             original_input=drafter_input,
             drafting_phase=drafting_phase,
@@ -307,6 +374,7 @@ class WritingPipeline:
             total_execution_time_ms=total_time,
             started_at=started_at,
             completed_at=datetime.now(),
+            artifact_path=final_artifact_path,
         )
 
     def _notify(

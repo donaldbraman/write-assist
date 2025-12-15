@@ -5,6 +5,7 @@ Data models for pipeline execution.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from write_assist.agents.models import (
@@ -61,6 +62,7 @@ class PipelineResult:
     total_execution_time_ms: float = 0
     started_at: datetime = field(default_factory=datetime.now)
     completed_at: datetime | None = None
+    artifact_path: Path | None = None
 
     @property
     def all_phases_succeeded(self) -> bool:
