@@ -12,6 +12,7 @@ from typing import Generic, TypeVar
 from pydantic import BaseModel, ValidationError
 
 from write_assist.agents.models import AgentError, ParallelRunResult, Provider
+from write_assist.caching import get_llm_cache
 from write_assist.llm import LLMClient, LLMError, Message
 
 # Type variables for input/output models
@@ -182,20 +183,42 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
 
         # Build prompt
         prompt = self.build_prompt(inputs)
+        system_message = self._get_system_message()
+
+        # Get model for this provider
+        model = self.models.get(provider) or ""
+
+        # Check cache for existing response
+        cache = get_llm_cache()
+        cache_key = cache.make_key(
+            provider=provider,
+            model=model,
+            prompt=prompt,
+            system_message=system_message,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
+        cached_response = cache.get(cache_key)
+        if cached_response is not None:
+            # Return cached response
+            return self.parse_json_response(cached_response, provider)
 
         # Create client with specified model
-        model = self.models.get(provider)
-        client = LLMClient(provider=provider, model=model)
+        client = LLMClient(provider=provider, model=model if model else None)
 
         # Make the call
         response = await client.chat(
             messages=[
-                Message(role="system", content=self._get_system_message()),
+                Message(role="system", content=system_message),
                 Message(role="user", content=prompt),
             ],
             max_tokens=max_tokens,
             temperature=temperature,
         )
+
+        # Cache the response
+        cache.set(cache_key, response.content)
 
         # Parse and validate response
         return self.parse_json_response(response.content, provider)
