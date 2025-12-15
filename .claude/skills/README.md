@@ -18,6 +18,7 @@ Skills provide domain expertise for legal academic writing. They follow a progre
 | [Academic Bluebook](academic-bluebook/SKILL.md) | 1.0.0 | Citation formatting for law reviews | `academic-bluebook/` |
 | [Article Writing](article-writing/SKILL.md) | 1.0.0 | Law review article structure and style | `article-writing/` |
 | [Casebook Editing](casebook-editing/SKILL.md) | 1.0.0 | Casebook development and case editing | `casebook-editing/` |
+| [Cite-Assist Research](cite-assist/SKILL.md) | 1.0.0 | Semantic search via cite-assist v3 API | `cite-assist/` |
 
 ## Skill Structure
 
