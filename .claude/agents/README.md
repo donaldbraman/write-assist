@@ -25,6 +25,12 @@ Each phase runs the same agent prompt on all three LLMs simultaneously.
 | [editor-agent](editor-agent.md) | 1.0.0 | Integrate multiple drafts | Cross-draft analysis, citation verification |
 | [judge-agent](judge-agent.md) | 1.0.0 | Rank and explain | Comparative evaluation, rubric-based scoring |
 
+### Research Agents
+
+| Agent | Version | Purpose | Capabilities |
+|-------|---------|---------|--------------|
+| [cite-assist-researcher-agent](cite-assist-researcher-agent.md) | 1.0.0 | Academic source retrieval | Semantic search, mode selection, citation prep |
+
 ### Utility Agents
 
 | Agent | Version | Purpose | Capabilities |
