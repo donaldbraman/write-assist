@@ -51,7 +51,7 @@ wheels = [
 [[package]]
 name = "auth-utils"
 version = "0.2.0"
-source = { git = "https://github.com/donaldbraman/auth-utils.git#16a4f7c2a731d22bdb03cd563e214187eaff829d" }
+source = { editable = "../auth-utils" }
 dependencies = [
     { name = "anthropic" },
     { name = "authlib" },
@@ -61,6 +61,22 @@ dependencies = [
     { name = "httpx" },
     { name = "openai" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "authlib", specifier = ">=1.0.0" },
+    { name = "google-api-python-client", specifier = ">=2.0.0" },
+    { name = "google-auth", specifier = ">=2.0.0" },
+    { name = "google-generativeai", specifier = ">=0.8.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "openai", specifier = ">=1.50.0" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "authlib"
@@ -1178,6 +1194,15 @@ wheels = [
 ]
 
 [[package]]
+name = "tenacity"
+version = "9.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/d4/2b0cd0fe285e14b36db076e78c93766ff1d529d70408bd1d2a5a84f1d929/tenacity-9.1.2.tar.gz", hash = "sha256:1169d376c297e7de388d18b4481760d478b0e99a777cad3a9c86e556f4b697cb", size = 48036, upload-time = "2025-04-02T08:25:09.966Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/30/643397144bfbfec6f6ef821f36f33e57d35946c44a2352d3c9f0ae847619/tenacity-9.1.2-py3-none-any.whl", hash = "sha256:f77bf36710d8b73a50b2dd155c97b870017ad21afe6ab300326b0371b3b05138", size = 28248, upload-time = "2025-04-02T08:25:07.678Z" },
+]
+
+[[package]]
 name = "tqdm"
 version = "4.67.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1253,6 +1278,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "rich" },
+    { name = "tenacity" },
 ]
 
 [package.optional-dependencies]
@@ -1266,12 +1292,13 @@ dev = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "auth-utils", git = "https://github.com/donaldbraman/auth-utils.git" },
+    { name = "auth-utils", editable = "../auth-utils" },
     { name = "click", specifier = ">=8.0.0" },
     { name = "diskcache", specifier = ">=5.6.0" },
     { name = "httpx", specifier = ">=0.27.0" },
@@ -1281,11 +1308,13 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8.0" },
+    { name = "tenacity", specifier = ">=8.0.0" },
 ]
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "ruff", specifier = ">=0.14.9" },
 ]

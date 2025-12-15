@@ -437,6 +437,51 @@ class ArtifactStore:
         return "\n".join(lines)
 
     # =========================================================================
+    # Error Saving
+    # =========================================================================
+
+    def save_errors(
+        self,
+        phase: str,
+        errors: dict[Provider, Any],
+        raw_responses: dict[Provider, str] | None = None,
+    ) -> None:
+        """
+        Save error information for a phase.
+
+        Args:
+            phase: Phase name (drafting, editing, judging)
+            errors: Dict of provider -> AgentError
+            raw_responses: Optional dict of provider -> raw response text
+        """
+        errors_dir = self.run_dir / "errors"
+        errors_dir.mkdir(exist_ok=True)
+
+        for provider, error in errors.items():
+            alias = self.mapping.get_alias(provider)
+
+            # Save error details
+            error_data = {
+                "phase": phase,
+                "provider_alias": alias,
+                "error_type": error.error_type,
+                "message": error.message,
+            }
+
+            # Save raw response if available
+            if raw_responses and provider in raw_responses:
+                raw = raw_responses[provider]
+                error_data["raw_response_length"] = len(raw)
+                error_data["raw_response_preview"] = raw[:2000] + "..." if len(raw) > 2000 else raw
+
+                # Also save full raw response to separate file
+                (errors_dir / f"{alias}-{phase}-raw-response.txt").write_text(raw)
+
+            (errors_dir / f"{alias}-{phase}-error.json").write_text(
+                json.dumps(error_data, indent=2, default=str)
+            )
+
+    # =========================================================================
     # Manifest
     # =========================================================================
 

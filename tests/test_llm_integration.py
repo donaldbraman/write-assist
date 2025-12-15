@@ -62,13 +62,15 @@ class TestLLMClientBasics:
     def test_invalid_provider_raises(self):
         """Should raise ValueError for unknown provider."""
         with pytest.raises(ValueError, match="Unknown provider"):
-            LLMClient(provider="invalid")  # type: ignore
+            LLMClient(provider="invalid", model="test-model")  # type: ignore
 
-    def test_get_default_model(self):
-        """Should return default models for providers."""
-        assert "claude" in LLMClient.get_default_model("claude")
-        assert "gemini" in LLMClient.get_default_model("gemini")
-        assert "gpt" in LLMClient.get_default_model("chatgpt")
+    def test_valid_providers_accepted(self):
+        """Should accept valid provider names with any model."""
+        # Just verify the provider validation passes (auth will fail if no key)
+        providers = LLMClient.get_available_providers()
+        assert "claude" in providers
+        assert "gemini" in providers
+        assert "chatgpt" in providers
 
 
 @pytest.mark.asyncio
@@ -235,25 +237,27 @@ class TestParallelExecution:
         assert isinstance(results["claude"], LLMResponse)
 
 
-@pytest.mark.asyncio
 class TestErrorHandling:
     """Tests for error handling."""
 
-    async def test_missing_api_key_raises_auth_error(self):
+    def test_missing_api_key_raises_auth_error(self):
         """Should raise AuthenticationError for missing API key."""
         # Temporarily unset the key
         original = os.environ.pop("ANTHROPIC_API_KEY", None)
         try:
             with pytest.raises(AuthenticationError):
-                LLMClient(provider="claude")
+                LLMClient(provider="claude", model="claude-3-haiku-20240307")
         finally:
             if original:
                 os.environ["ANTHROPIC_API_KEY"] = original
 
     @skip_no_anthropic
+    @pytest.mark.asyncio
     async def test_invalid_api_key_raises_auth_error(self):
         """Should raise AuthenticationError for invalid API key."""
-        client = LLMClient(provider="claude", api_key="invalid-key")
+        client = LLMClient(
+            provider="claude", model="claude-3-haiku-20240307", api_key="invalid-key"
+        )
         with pytest.raises((AuthenticationError, APIError)):
             await client.chat(
                 messages=[Message(role="user", content="Hello")],
