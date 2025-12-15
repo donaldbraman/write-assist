@@ -98,6 +98,18 @@ from write_assist.pipeline import PipelineProgress, WritingPipeline
     "--model-chatgpt",
     help="Override ChatGPT model",
 )
+@click.option(
+    "--source",
+    "-s",
+    "sources",
+    multiple=True,
+    help="Source document (local path or Google Docs URL). Can be repeated.",
+)
+@click.option(
+    "--no-cite-assist",
+    is_flag=True,
+    help="Disable cite-assist citation lookup",
+)
 def run_cmd(
     topic: str | None,
     topic_file: str | None,
@@ -112,6 +124,8 @@ def run_cmd(
     model_claude: str | None,
     model_gemini: str | None,
     model_chatgpt: str | None,
+    sources: tuple[str, ...],
+    no_cite_assist: bool,
 ) -> None:
     """Run the full writing pipeline."""
     # Resolve topic
@@ -136,7 +150,10 @@ def run_cmd(
         models["chatgpt"] = model_chatgpt
 
     # Create pipeline
-    pipeline = WritingPipeline(models=models)
+    pipeline = WritingPipeline(
+        models=models,
+        use_cite_assist=not no_cite_assist,
+    )
 
     # Progress callback
     def on_progress(p: PipelineProgress) -> None:
@@ -146,6 +163,8 @@ def run_cmd(
     # Run pipeline
     if not quiet:
         console.print(f"\n[bold]Starting pipeline for:[/bold] {topic[:50]}...")
+        if sources:
+            console.print(f"[dim]Sources: {len(sources)} document(s)[/dim]")
         console.print()
 
     try:
@@ -154,6 +173,7 @@ def run_cmd(
                 topic=topic,
                 document_type=doc_type,  # type: ignore
                 section_outline=outline,
+                source_files=list(sources) if sources else None,
                 target_length=length,
                 on_progress=on_progress if verbose else None,
             )

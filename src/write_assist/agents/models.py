@@ -54,13 +54,29 @@ class LocalCitation(BaseModel):
     relevant_text: str  # Chunk or summary from cite-assist
 
 
+class LoadedSource(BaseModel):
+    """A loaded source document with content."""
+
+    path: str = Field(..., description="Original path or URL")
+    title: str = Field(..., description="Document title")
+    content: str = Field(..., description="Extracted text content")
+    source_type: str = Field(..., description="Type: local_file, google_doc, url")
+
+
 class DrafterInput(BaseModel):
     """Input contract for the drafter agent."""
 
     topic: str
     document_type: DocumentType
     section_outline: str
-    source_files: list[str] = Field(default_factory=list)
+    source_files: list[str] = Field(
+        default_factory=list,
+        description="Paths or URLs to source documents",
+    )
+    source_documents: list[LoadedSource] = Field(
+        default_factory=list,
+        description="Pre-loaded source documents with content",
+    )
     target_length: int | None = None
     audience: str = "Legal academics and practitioners"
     style_variant: str = "standard"

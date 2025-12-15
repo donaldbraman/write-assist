@@ -21,7 +21,7 @@ from write_assist.agents import (
     JudgeInput,
     JudgeResult,
 )
-from write_assist.agents.models import DocumentType, LocalCitation, Provider
+from write_assist.agents.models import DocumentType, LoadedSource, LocalCitation, Provider
 from write_assist.citations import CiteAssistClient, CiteAssistUnavailable
 from write_assist.pipeline.models import (
     PhaseResult,
@@ -29,6 +29,7 @@ from write_assist.pipeline.models import (
     PipelineResult,
     ProgressCallback,
 )
+from write_assist.sources import SourceLoader
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class WritingPipeline:
         cite_assist_url: str | None = None,
         cite_assist_library_id: int | None = None,
         use_cite_assist: bool = True,
+        google_key_path: str | None = None,
     ):
         """
         Initialize the pipeline.
@@ -72,17 +74,25 @@ class WritingPipeline:
             cite_assist_url: URL for cite-assist API (default: from env or localhost:8000)
             cite_assist_library_id: Zotero library ID for cite-assist queries
             use_cite_assist: Whether to query cite-assist for local citations
+            google_key_path: Path to Google service account key for Google Docs access
         """
         self.project_root = project_root
         self.models = models
         self.use_cite_assist = use_cite_assist
         self.cite_assist_url = cite_assist_url
         self.cite_assist_library_id = cite_assist_library_id
+        self.google_key_path = google_key_path
 
         # Initialize agents
         self.drafter = DrafterAgent(project_root=project_root, models=models)
         self.editor = EditorAgent(project_root=project_root, models=models)
         self.judge = JudgeAgent(project_root=project_root, models=models)
+
+        # Initialize source loader
+        self.source_loader = SourceLoader(
+            google_key_path=google_key_path,
+            on_error="warn",  # Log warnings but don't fail pipeline
+        )
 
     async def run(
         self,
@@ -117,7 +127,21 @@ class WritingPipeline:
         total_start = time.perf_counter()
 
         # =====================================================================
-        # Pre-Phase: Query cite-assist for local citations
+        # Pre-Phase 1: Load source documents
+        # =====================================================================
+        source_documents: list[LoadedSource] = []
+        if source_files:
+            self._notify(on_progress, "sources", "starting", message="Loading source documents")
+            source_documents = self._load_sources(source_files)
+            self._notify(
+                on_progress,
+                "sources",
+                "completed",
+                message=f"Loaded {len(source_documents)}/{len(source_files)} sources",
+            )
+
+        # =====================================================================
+        # Pre-Phase 2: Query cite-assist for local citations
         # =====================================================================
         local_citations: list[LocalCitation] = []
         if self.use_cite_assist:
@@ -138,6 +162,7 @@ class WritingPipeline:
             document_type=document_type,
             section_outline=section_outline,
             source_files=source_files or [],
+            source_documents=source_documents,
             target_length=target_length,
             audience=audience,
             local_citations=local_citations,
@@ -489,3 +514,28 @@ class WritingPipeline:
         except Exception as e:
             logger.warning(f"Error querying cite-assist: {e}")
             return []
+
+    def _load_sources(self, source_files: list[str]) -> list[LoadedSource]:
+        """
+        Load source documents from paths and URLs.
+
+        Args:
+            source_files: List of file paths or URLs
+
+        Returns:
+            List of LoadedSource objects with content
+        """
+        loaded = []
+        docs = self.source_loader.load_many(source_files)
+
+        for doc in docs:
+            loaded.append(
+                LoadedSource(
+                    path=doc.path,
+                    title=doc.title,
+                    content=doc.content,
+                    source_type=doc.source_type.value,
+                )
+            )
+
+        return loaded
