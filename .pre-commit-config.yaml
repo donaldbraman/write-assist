@@ -1,0 +1,44 @@
+repos:
+  # Ruff - fast Python linter and formatter
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-yaml
+        args: [--unsafe]
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch, main]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # Prevent committing to wrong directories
+  - repo: local
+    hooks:
+      - id: no-temp-files
+        name: No temp files in commit
+        entry: bash -c 'git diff --cached --name-only | grep -qE "^temp/" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        verbose: true
+
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+  autoupdate_commit_msg: |
+    [pre-commit.ci] pre-commit autoupdate
