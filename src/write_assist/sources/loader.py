@@ -31,17 +31,14 @@ class SourceLoader:
 
     def __init__(
         self,
-        google_key_path: str | None = None,
         on_error: str = "raise",
     ):
         """
         Initialize the source loader.
 
         Args:
-            google_key_path: Path to Google service account key file
             on_error: Error handling strategy: "raise", "skip", or "warn"
         """
-        self.google_key_path = google_key_path
         self.on_error = on_error
 
     def load(self, path: str) -> SourceDocument:
@@ -62,7 +59,7 @@ class SourceLoader:
         source_type = self.detect_type(path)
 
         if source_type == SourceType.GOOGLE_DOC:
-            return load_google_doc(path, key_path=self.google_key_path)
+            return load_google_doc(path)
         elif source_type == SourceType.LOCAL_FILE:
             return load_local_file(path)
         else:

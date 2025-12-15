@@ -64,7 +64,6 @@ class WritingPipeline:
         cite_assist_url: str | None = None,
         cite_assist_library_id: int | None = None,
         use_cite_assist: bool = True,
-        google_key_path: str | None = None,
         output_dir: Path | str | None = None,
         save_artifacts: bool = True,
     ):
@@ -77,7 +76,6 @@ class WritingPipeline:
             cite_assist_url: URL for cite-assist API (default: from env or localhost:8000)
             cite_assist_library_id: Zotero library ID for cite-assist queries
             use_cite_assist: Whether to query cite-assist for local citations
-            google_key_path: Path to Google service account key for Google Docs access
             output_dir: Directory to save artifacts (default: ./runs)
             save_artifacts: Whether to save artifacts to disk (default: True)
         """
@@ -86,7 +84,6 @@ class WritingPipeline:
         self.use_cite_assist = use_cite_assist
         self.cite_assist_url = cite_assist_url
         self.cite_assist_library_id = cite_assist_library_id
-        self.google_key_path = google_key_path
         self.output_dir = Path(output_dir) if output_dir else Path("./runs")
         self.save_artifacts = save_artifacts
 
@@ -95,9 +92,8 @@ class WritingPipeline:
         self.editor = EditorAgent(project_root=project_root, models=models)
         self.judge = JudgeAgent(project_root=project_root, models=models)
 
-        # Initialize source loader
+        # Initialize source loader (uses auth-utils centralized credentials)
         self.source_loader = SourceLoader(
-            google_key_path=google_key_path,
             on_error="warn",  # Log warnings but don't fail pipeline
         )
 
