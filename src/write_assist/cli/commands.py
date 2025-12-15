@@ -110,6 +110,18 @@ from write_assist.pipeline import PipelineProgress, WritingPipeline
     is_flag=True,
     help="Disable cite-assist citation lookup",
 )
+@click.option(
+    "--output-dir",
+    "-d",
+    type=click.Path(),
+    default="./runs",
+    help="Directory for artifact storage (default: ./runs)",
+)
+@click.option(
+    "--no-artifacts",
+    is_flag=True,
+    help="Disable artifact storage",
+)
 def run_cmd(
     topic: str | None,
     topic_file: str | None,
@@ -126,6 +138,8 @@ def run_cmd(
     model_chatgpt: str | None,
     sources: tuple[str, ...],
     no_cite_assist: bool,
+    output_dir: str,
+    no_artifacts: bool,
 ) -> None:
     """Run the full writing pipeline."""
     # Resolve topic
@@ -153,6 +167,8 @@ def run_cmd(
     pipeline = WritingPipeline(
         models=models,
         use_cite_assist=not no_cite_assist,
+        output_dir=output_dir,
+        save_artifacts=not no_artifacts,
     )
 
     # Progress callback
@@ -185,6 +201,9 @@ def run_cmd(
     # Output result
     if not quiet:
         console.print()
+        if result.artifact_path:
+            console.print(f"[dim]Artifacts saved to:[/dim] {result.artifact_path}")
+            console.print()
 
     if output:
         # Write to file
