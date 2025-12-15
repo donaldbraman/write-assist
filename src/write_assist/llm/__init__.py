@@ -1,17 +1,20 @@
 """
-Unified LLM client for multi-provider support.
+LLM client re-exports from auth-utils.
 
-Supports Claude (Anthropic), Gemini (Google), and ChatGPT (OpenAI).
+This module provides backwards compatibility - all imports are
+re-exported from the shared auth-utils package.
 """
 
-from write_assist.llm.client import LLMClient
-from write_assist.llm.exceptions import (
+from auth_utils.llm import (
     APIError,
     AuthenticationError,
+    LLMClient,
     LLMError,
+    LLMResponse,
+    Message,
     RateLimitError,
+    UsageStats,
 )
-from write_assist.llm.models import LLMResponse, Message, UsageStats
 
 __all__ = [
     "LLMClient",
