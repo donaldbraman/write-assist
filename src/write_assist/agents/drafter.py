@@ -5,7 +5,7 @@ Creates initial drafts of legal academic writing with research and citations.
 """
 
 from write_assist.agents.base import BaseAgent
-from write_assist.agents.models import DrafterInput, DraftResult, LocalCitation
+from write_assist.agents.models import DrafterInput, DraftResult, LoadedSource, LocalCitation
 
 
 class DrafterAgent(BaseAgent[DrafterInput, DraftResult]):
@@ -26,11 +26,15 @@ class DrafterAgent(BaseAgent[DrafterInput, DraftResult]):
 
     def build_prompt(self, inputs: DrafterInput) -> str:
         """Build the drafter prompt from inputs."""
-        # Format source files
-        if inputs.source_files:
-            source_files_str = "\n".join(f"- {f}" for f in inputs.source_files)
+        # Format source documents (loaded content)
+        if inputs.source_documents:
+            source_section = self._format_source_documents(inputs.source_documents)
+        elif inputs.source_files:
+            # Fallback: just list file paths if not loaded
+            source_section = "**Source Materials (paths only, not loaded):**\n"
+            source_section += "\n".join(f"- {f}" for f in inputs.source_files)
         else:
-            source_files_str = "None provided - conduct research"
+            source_section = "**Source Materials:** None provided - conduct research"
 
         # Format target length
         target_length_str = (
@@ -55,8 +59,7 @@ class DrafterAgent(BaseAgent[DrafterInput, DraftResult]):
 **Outline:**
 {inputs.section_outline}
 
-**Source Materials:**
-{source_files_str}
+{source_section}
 
 **Target Length:** {target_length_str}
 
@@ -162,6 +165,37 @@ Now create the draft. Respond ONLY with the JSON object."""
             lines.append("")
             lines.append("**Excerpt:**")
             lines.append(f"> {cit.relevant_text[:500]}...")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _format_source_documents(self, documents: list[LoadedSource]) -> str:
+        """Format loaded source documents for inclusion in prompt."""
+        if not documents:
+            return "**Source Materials:** None provided"
+
+        lines = [
+            "## Provided Source Materials",
+            "",
+            "The following source documents have been loaded for your reference.",
+            "**Cite these as 'provided' sources when used.**",
+            "",
+        ]
+
+        for i, doc in enumerate(documents, 1):
+            # Truncate content to avoid overwhelming the context
+            content_preview = doc.content[:3000]
+            if len(doc.content) > 3000:
+                content_preview += "\n\n[... content truncated ...]"
+
+            lines.append(f"### Source {i}: {doc.title}")
+            lines.append(f"**Path:** {doc.path}")
+            lines.append(f"**Type:** {doc.source_type}")
+            lines.append("")
+            lines.append("**Content:**")
+            lines.append("```")
+            lines.append(content_preview)
+            lines.append("```")
             lines.append("")
 
         return "\n".join(lines)
