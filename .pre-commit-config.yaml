@@ -37,6 +37,13 @@ repos:
         pass_filenames: false
         verbose: true
 
+      - id: check-stale-branches
+        name: Check for stale branches
+        entry: bash -c 'count=$(git branch --merged main 2>/dev/null | grep -v "main\|master\|\*" | wc -l | tr -d " "); if [ "$count" -gt 2 ]; then echo "⚠️  $count stale local branches found. Run /janitor to clean up."; fi; exit 0'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
 ci:
   autofix_commit_msg: |
     [pre-commit.ci] auto fixes from pre-commit hooks
