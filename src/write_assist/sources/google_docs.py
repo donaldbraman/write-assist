@@ -3,7 +3,6 @@ Google Docs loading for source documents.
 """
 
 import logging
-import os
 import re
 from typing import Any
 
@@ -47,13 +46,15 @@ def is_google_doc_url(url: str) -> bool:
     return extract_doc_id(url) is not None
 
 
-def load_google_doc(url: str, key_path: str | None = None) -> SourceDocument:
+def load_google_doc(url: str) -> SourceDocument:
     """
     Load a Google Doc as a source document.
 
+    Uses auth-utils centralized credentials for authentication.
+    Run `auth-utils google import-key <path>` to configure credentials.
+
     Args:
         url: Google Docs URL
-        key_path: Path to service account key file (optional, uses env var if not provided)
 
     Returns:
         SourceDocument with extracted content
@@ -69,22 +70,13 @@ def load_google_doc(url: str, key_path: str | None = None) -> SourceDocument:
     # Try to import auth-utils
     try:
         from auth_utils.google import GoogleServiceAccount
+        from auth_utils.google.exceptions import CredentialsNotFoundError
     except ImportError as e:
         raise GoogleDocsUnavailable(url, "auth-utils not installed: pip install auth-utils") from e
 
-    # Get key path from env if not provided
-    if key_path is None:
-        key_path = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
-
-    if not key_path:
-        raise GoogleDocsUnavailable(
-            url,
-            "Service account key not configured. "
-            "Set GOOGLE_SERVICE_ACCOUNT_KEY env var or pass key_path.",
-        )
-
     try:
-        auth = GoogleServiceAccount(key_path=key_path, scopes=["docs_readonly"])
+        # Uses centralized credentials from auth-utils
+        auth = GoogleServiceAccount(scopes=["docs_readonly"])
         docs_service = auth.build_service("docs", "v1")
 
         # Fetch the document
@@ -106,8 +98,12 @@ def load_google_doc(url: str, key_path: str | None = None) -> SourceDocument:
             },
         )
 
-    except FileNotFoundError as e:
-        raise GoogleDocsUnavailable(url, f"Service account key not found: {key_path}") from e
+    except CredentialsNotFoundError as e:
+        raise GoogleDocsUnavailable(
+            url,
+            "Service account key not configured. "
+            "Run: auth-utils google import-key <path-to-key.json>",
+        ) from e
     except Exception as e:
         error_msg = str(e)
         if "404" in error_msg:
