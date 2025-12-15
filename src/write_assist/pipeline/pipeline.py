@@ -106,6 +106,8 @@ class WritingPipeline:
         target_length: int | None = None,
         audience: str = "Legal academics and practitioners",
         max_tokens: int = 8192,
+        max_tokens_editing: int | None = None,
+        max_tokens_judging: int | None = None,
         temperature: float = 0.7,
         on_progress: ProgressCallback | None = None,
     ) -> PipelineResult:
@@ -119,13 +121,22 @@ class WritingPipeline:
             source_files: Optional list of file paths to reference materials
             target_length: Approximate word count target
             audience: Target readership description
-            max_tokens: Maximum tokens per LLM response
+            max_tokens: Maximum tokens for drafting phase
+            max_tokens_editing: Maximum tokens for editing phase (default: 2x max_tokens)
+            max_tokens_judging: Maximum tokens for judging phase (default: 2x max_tokens)
             temperature: Sampling temperature for LLM calls
             on_progress: Optional callback for progress updates
 
         Returns:
             PipelineResult with all phase outputs and rankings
         """
+        # Editing and judging produce more output (integrated content + metadata)
+        # Default to 3x drafting tokens to prevent Gemini truncation
+        # Gemini models can truncate around 15-16K chars even with higher limits
+        if max_tokens_editing is None:
+            max_tokens_editing = max_tokens * 3
+        if max_tokens_judging is None:
+            max_tokens_judging = max_tokens * 3
         started_at = datetime.now()
         total_start = time.perf_counter()
 
@@ -260,7 +271,7 @@ class WritingPipeline:
         phase2_start = time.perf_counter()
         edit_parallel_result = await self.editor.run_parallel(
             inputs=editor_input,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens_editing,
             temperature=temperature,
         )
         phase2_time = (time.perf_counter() - phase2_start) * 1000
@@ -324,7 +335,7 @@ class WritingPipeline:
         phase3_start = time.perf_counter()
         judge_parallel_result = await self.judge.run_parallel(
             inputs=judge_input,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens_judging,
             temperature=temperature,
         )
         phase3_time = (time.perf_counter() - phase3_start) * 1000
