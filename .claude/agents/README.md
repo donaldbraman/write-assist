@@ -17,11 +17,19 @@ Each phase runs the same agent prompt on all three LLMs simultaneously.
 
 ## Available Agents
 
+### Pipeline Agents
+
 | Agent | Version | Purpose | Capabilities |
 |-------|---------|---------|--------------|
 | [drafter-agent](drafter-agent.md) | 1.0.0 | Create initial draft | File reading, web research, cite-assist queries |
 | [editor-agent](editor-agent.md) | 1.0.0 | Integrate multiple drafts | Cross-draft analysis, citation verification |
 | [judge-agent](judge-agent.md) | 1.0.0 | Rank and explain | Comparative evaluation, rubric-based scoring |
+
+### Utility Agents
+
+| Agent | Version | Purpose | Capabilities |
+|-------|---------|---------|--------------|
+| [janitor-agent](janitor-agent.md) | 1.0.0 | Repository maintenance | Branch cleanup, issue analysis, code quality |
 
 ## Usage Pattern
 
