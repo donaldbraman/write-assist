@@ -3,7 +3,6 @@ CLI command implementations.
 """
 
 import asyncio
-import os
 from pathlib import Path
 
 import click
@@ -17,6 +16,7 @@ from write_assist.cli.output import (
     print_models_table,
     print_status_table,
 )
+from write_assist.llm import LLMClient
 from write_assist.pipeline import PipelineProgress, WritingPipeline
 
 # =============================================================================
@@ -244,10 +244,13 @@ def run_cmd(
 @click.command()
 def status_cmd() -> None:
     """Check API key status."""
+    # Use auth-utils to check provider configuration
+    configured = LLMClient.get_configured_providers()
+
     api_status = {
-        "Claude": bool(os.environ.get("ANTHROPIC_API_KEY")),
-        "Gemini": bool(os.environ.get("GOOGLE_API_KEY")),
-        "ChatGPT": bool(os.environ.get("OPENAI_API_KEY")),
+        "Claude": configured.get("claude", False),
+        "Gemini": configured.get("gemini", False),
+        "ChatGPT": configured.get("chatgpt", False),
     }
 
     print_status_table(api_status)
