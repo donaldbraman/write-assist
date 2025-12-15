@@ -5,8 +5,6 @@ All tests in write-assist are integration tests using real data.
 No mocks allowed.
 """
 
-import pytest
-
 
 def test_placeholder():
     """Placeholder test to verify pytest works."""
@@ -19,13 +17,10 @@ def test_placeholder():
     assert True
 
 
-@pytest.mark.asyncio
-async def test_async_placeholder():
-    """Placeholder async test for LLM integration tests."""
-    # Real tests will make actual API calls to Claude, Gemini, and ChatGPT
-    # Example structure:
-    #
-    # from write_assist.llm.client import query_llm
-    # response = await query_llm("Test prompt", provider="claude")
-    # assert response.content is not None
-    assert True
+def test_async_infrastructure():
+    """Verify async test infrastructure is available."""
+    # The actual async tests are in test_llm_integration.py
+    # This test verifies pytest-asyncio is configured
+    import pytest_asyncio
+
+    assert pytest_asyncio is not None

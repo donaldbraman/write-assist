@@ -86,32 +86,33 @@ class TestCiteAssistClient:
     """Tests for CiteAssistClient."""
 
     @pytest.fixture
-    def client(self) -> CiteAssistClient:
-        """Create a test client."""
+    def unavailable_client(self) -> CiteAssistClient:
+        """Create a test client pointing to a non-existent server."""
+        # Use a port that's definitely not running cite-assist
         return CiteAssistClient(
-            base_url="http://localhost:8000",
+            base_url="http://localhost:59999",
             library_id=5673253,
-            timeout=5.0,
+            timeout=1.0,  # Short timeout for faster failure
         )
 
     @pytest.mark.asyncio
-    async def test_search_unavailable(self, client: CiteAssistClient) -> None:
+    async def test_search_unavailable(self, unavailable_client: CiteAssistClient) -> None:
         """Test search when cite-assist is unavailable."""
         # Without a running cite-assist server, should raise CiteAssistUnavailable
         with pytest.raises(CiteAssistUnavailable):
-            await client.search("test query")
+            await unavailable_client.search("test query")
 
     @pytest.mark.asyncio
-    async def test_search_safe_fallback(self, client: CiteAssistClient) -> None:
+    async def test_search_safe_fallback(self, unavailable_client: CiteAssistClient) -> None:
         """Test search_safe returns empty results on failure."""
-        response = await client.search_safe("test query")
+        response = await unavailable_client.search_safe("test query")
         assert response.results == []
         assert response.total == 0
 
     @pytest.mark.asyncio
-    async def test_health_check_unavailable(self, client: CiteAssistClient) -> None:
+    async def test_health_check_unavailable(self, unavailable_client: CiteAssistClient) -> None:
         """Test health check when cite-assist is unavailable."""
-        result = await client.health_check()
+        result = await unavailable_client.health_check()
         assert result is False
 
 

@@ -223,6 +223,15 @@ class WritingPipeline:
         if artifact_store and draft_parallel_result.successful:
             artifact_store.save_drafts(draft_parallel_result.successful)
 
+        # Save any errors with raw responses for debugging
+        if artifact_store and draft_parallel_result.failed:
+            raw_responses = {
+                p: self.drafter.get_failed_raw_response(p)
+                for p in draft_parallel_result.failed
+                if self.drafter.get_failed_raw_response(p)
+            }
+            artifact_store.save_errors("drafting", draft_parallel_result.failed, raw_responses)
+
         # Check if we have enough drafts to continue
         if drafting_phase.success_count < 1:
             if artifact_store:
@@ -274,6 +283,15 @@ class WritingPipeline:
         if artifact_store and edit_parallel_result.successful:
             artifact_store.save_edits(edit_parallel_result.successful)
 
+        # Save any errors with raw responses for debugging
+        if artifact_store and edit_parallel_result.failed:
+            raw_responses = {
+                p: self.editor.get_failed_raw_response(p)
+                for p in edit_parallel_result.failed
+                if self.editor.get_failed_raw_response(p)
+            }
+            artifact_store.save_errors("editing", edit_parallel_result.failed, raw_responses)
+
         # Check if we have enough edits to continue
         if editing_phase.success_count < 1:
             if artifact_store:
@@ -324,6 +342,15 @@ class WritingPipeline:
             "completed",
             message=f"Judging complete: {judging_phase.success_count}/3 succeeded",
         )
+
+        # Save any errors with raw responses for debugging
+        if artifact_store and judge_parallel_result.failed:
+            raw_responses = {
+                p: self.judge.get_failed_raw_response(p)
+                for p in judge_parallel_result.failed
+                if self.judge.get_failed_raw_response(p)
+            }
+            artifact_store.save_errors("judging", judge_parallel_result.failed, raw_responses)
 
         # =====================================================================
         # Aggregate Results

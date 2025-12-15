@@ -4,16 +4,26 @@ Base agent class for orchestrating LLM calls.
 
 import asyncio
 import json
+import logging
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from write_assist.agents.models import AgentError, ParallelRunResult, Provider
 from write_assist.caching import get_llm_cache
 from write_assist.llm import LLMClient, LLMError, Message
+
+logger = logging.getLogger(__name__)
 
 # Type variables for input/output models
 InputT = TypeVar("InputT", bound=BaseModel)
@@ -122,6 +132,10 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
         Raises:
             ValueError: If JSON parsing or validation fails
         """
+        # Store raw response for debugging
+        self._last_raw_response = response
+        self._last_provider = provider
+
         # Try to extract JSON from the response
         # LLMs sometimes wrap JSON in markdown code blocks
         json_str = response.strip()
@@ -137,11 +151,30 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
 
         json_str = json_str.strip()
 
+        # Try to find JSON object if response has extra text
+        if not json_str.startswith("{"):
+            # Look for JSON object in the response
+            match = re.search(r"\{[\s\S]*\}", json_str)
+            if match:
+                logger.warning(f"{provider} returned extra text before JSON, extracting object")
+                json_str = match.group(0)
+
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
+            # Log the full response for debugging
+            logger.error(
+                f"JSON parse error from {provider}:\n"
+                f"Error: {e}\n"
+                f"Response length: {len(response)} chars\n"
+                f"First 1000 chars:\n{response[:1000]}\n"
+                f"Last 500 chars:\n{response[-500:]}"
+            )
             raise ValueError(
-                f"Failed to parse JSON from {provider}: {e}\nResponse: {response[:500]}..."
+                f"Failed to parse JSON from {provider}: {e}\n"
+                f"Response length: {len(response)} chars\n"
+                f"Response start: {response[:500]}...\n"
+                f"Response end: ...{response[-500:]}"
             ) from e
 
         # Add metadata if not present
@@ -152,7 +185,17 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
         try:
             return self.output_model.model_validate(data)
         except ValidationError as e:
-            raise ValueError(f"Output validation failed for {provider}: {e}") from e
+            # Log validation errors with context
+            logger.error(
+                f"Validation error from {provider}:\n"
+                f"Error: {e}\n"
+                f"Data keys: {list(data.keys())}\n"
+                f"Expected model: {self.output_model.__name__}"
+            )
+            raise ValueError(
+                f"Output validation failed for {provider}: {e}\n"
+                f"Data keys received: {list(data.keys())}"
+            ) from e
 
     async def run(
         self,
@@ -160,22 +203,24 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
         provider: Provider,
         max_tokens: int = 8192,
         temperature: float = 0.7,
+        max_retries: int = 3,
     ) -> OutputT:
         """
-        Run the agent on a single provider.
+        Run the agent on a single provider with retry logic.
 
         Args:
             inputs: Validated input model
             provider: Which LLM provider to use
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature
+            max_retries: Maximum number of retry attempts for transient failures
 
         Returns:
             Validated output model instance
 
         Raises:
-            LLMError: If the LLM call fails
-            ValueError: If output parsing/validation fails
+            LLMError: If the LLM call fails after all retries
+            ValueError: If output parsing/validation fails after all retries
         """
         # Validate inputs
         if not isinstance(inputs, self.input_model):
@@ -204,24 +249,39 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
             # Return cached response
             return self.parse_json_response(cached_response, provider)
 
-        # Create client with specified model
-        client = LLMClient(provider=provider, model=model if model else None)
-
-        # Make the call
-        response = await client.chat(
-            messages=[
-                Message(role="system", content=system_message),
-                Message(role="user", content=prompt),
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
+        # Define the retryable operation
+        @retry(
+            stop=stop_after_attempt(max_retries),
+            wait=wait_exponential(multiplier=2, min=4, max=60),
+            retry=retry_if_exception_type((LLMError, ValueError, TimeoutError)),
+            before_sleep=before_sleep_log(logger, logging.WARNING),
+            reraise=True,
         )
+        async def _call_with_retry() -> str:
+            """Make LLM call with retry logic."""
+            client = LLMClient(provider=provider, model=model if model else None)
 
-        # Cache the response
-        cache.set(cache_key, response.content)
+            logger.info(f"Calling {provider} ({model or 'default'}) for {self.agent_name}")
 
-        # Parse and validate response
-        return self.parse_json_response(response.content, provider)
+            response = await client.chat(
+                messages=[
+                    Message(role="system", content=system_message),
+                    Message(role="user", content=prompt),
+                ],
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+
+            # Try to parse immediately to catch format errors
+            # This allows retry on malformed responses
+            parsed = self.parse_json_response(response.content, provider)
+
+            # Only cache if parsing succeeded
+            cache.set(cache_key, response.content)
+
+            return parsed
+
+        return await _call_with_retry()
 
     async def run_parallel(
         self,
@@ -229,6 +289,7 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
         providers: list[Provider] | None = None,
         max_tokens: int = 8192,
         temperature: float = 0.7,
+        max_retries: int = 3,
     ) -> ParallelRunResult:
         """
         Run the agent on multiple providers in parallel.
@@ -238,6 +299,7 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
             providers: List of providers (defaults to all three)
             max_tokens: Maximum tokens in response
             temperature: Sampling temperature
+            max_retries: Maximum retry attempts per provider
 
         Returns:
             ParallelRunResult with successful and failed results
@@ -249,6 +311,9 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
         if not isinstance(inputs, self.input_model):
             inputs = self.input_model.model_validate(inputs)
 
+        # Store raw responses for failed providers (for debugging)
+        self._failed_raw_responses: dict[Provider, str] = {}
+
         async def run_one(provider: Provider) -> tuple[Provider, OutputT | AgentError]:
             """Run on one provider, catching errors."""
             try:
@@ -257,22 +322,40 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
                     provider=provider,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    max_retries=max_retries,
                 )
                 return provider, result
             except LLMError as e:
+                logger.error(f"{self.agent_name} LLM error from {provider}: {e}")
                 return provider, AgentError(
                     provider=provider,
                     error_type=type(e).__name__,
                     message=str(e),
-                    original_error=e.original if hasattr(e, "original") else None,
+                    original_error=str(e.original)
+                    if hasattr(e, "original") and e.original
+                    else None,
                 )
             except ValueError as e:
+                # Capture raw response if available
+                if (
+                    hasattr(self, "_last_raw_response")
+                    and hasattr(self, "_last_provider")
+                    and self._last_provider == provider
+                ):
+                    self._failed_raw_responses[provider] = self._last_raw_response
+                    logger.error(
+                        f"{self.agent_name} validation error from {provider}. "
+                        f"Raw response saved ({len(self._last_raw_response)} chars)"
+                    )
                 return provider, AgentError(
                     provider=provider,
                     error_type="ValidationError",
                     message=str(e),
                 )
             except Exception as e:
+                logger.error(
+                    f"{self.agent_name} unexpected error from {provider}: {type(e).__name__}: {e}"
+                )
                 return provider, AgentError(
                     provider=provider,
                     error_type=type(e).__name__,
@@ -293,6 +376,12 @@ class BaseAgent(ABC, Generic[InputT, OutputT]):
                 successful[provider] = result
 
         return ParallelRunResult(successful=successful, failed=failed)
+
+    def get_failed_raw_response(self, provider: Provider) -> str | None:
+        """Get the raw response from a failed provider for debugging."""
+        if hasattr(self, "_failed_raw_responses"):
+            return self._failed_raw_responses.get(provider)
+        return None
 
     def _get_system_message(self) -> str:
         """Get the system message for this agent."""

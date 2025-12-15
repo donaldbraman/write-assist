@@ -171,9 +171,12 @@ class TestSourceLoader:
 class TestGoogleDocsLoading:
     """Tests for Google Docs loading (requires auth)."""
 
-    def test_load_without_credentials(self) -> None:
-        """Test error when no credentials configured."""
+    def test_load_invalid_doc_raises_error(self) -> None:
+        """Test that loading an invalid doc raises appropriate error."""
         from write_assist.sources.google_docs import load_google_doc
 
-        with pytest.raises(GoogleDocsUnavailable):
-            load_google_doc("https://docs.google.com/document/d/test/edit")
+        # Loading a fake doc ID should fail with either:
+        # - GoogleDocsUnavailable (if no credentials)
+        # - SourceLoadError (if credentials exist but doc doesn't)
+        with pytest.raises((GoogleDocsUnavailable, SourceLoadError)):
+            load_google_doc("https://docs.google.com/document/d/fake-doc-id-12345/edit")
