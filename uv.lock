@@ -49,6 +49,17 @@ wheels = [
 ]
 
 [[package]]
+name = "auth-utils"
+version = "0.1.0"
+source = { git = "https://github.com/donaldbraman/auth-utils.git#ff6925635e8aae1ee949cb52cdb574430de06658" }
+dependencies = [
+    { name = "anthropic" },
+    { name = "google-generativeai" },
+    { name = "httpx" },
+    { name = "openai" },
+]
+
+[[package]]
 name = "cachetools"
 version = "6.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1025,10 +1036,8 @@ name = "write-assist"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
-    { name = "google-generativeai" },
+    { name = "auth-utils" },
     { name = "httpx" },
-    { name = "openai" },
     { name = "pydantic" },
 ]
 
@@ -1042,10 +1051,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.40.0" },
-    { name = "google-generativeai", specifier = ">=0.8.0" },
+    { name = "auth-utils", git = "https://github.com/donaldbraman/auth-utils.git" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "openai", specifier = ">=1.50.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
