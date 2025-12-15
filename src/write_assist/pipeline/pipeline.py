@@ -4,6 +4,7 @@ Writing pipeline orchestration.
 Chains drafter → editor → judge phases for multi-LLM ensemble writing.
 """
 
+import logging
 import time
 from collections import Counter
 from datetime import datetime
@@ -20,13 +21,16 @@ from write_assist.agents import (
     JudgeInput,
     JudgeResult,
 )
-from write_assist.agents.models import DocumentType, Provider
+from write_assist.agents.models import DocumentType, LocalCitation, Provider
+from write_assist.citations import CiteAssistClient, CiteAssistUnavailable
 from write_assist.pipeline.models import (
     PhaseResult,
     PipelineProgress,
     PipelineResult,
     ProgressCallback,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class WritingPipeline:
@@ -55,6 +59,9 @@ class WritingPipeline:
         self,
         project_root: Path | None = None,
         models: dict[Provider, str] | None = None,
+        cite_assist_url: str | None = None,
+        cite_assist_library_id: int | None = None,
+        use_cite_assist: bool = True,
     ):
         """
         Initialize the pipeline.
@@ -62,9 +69,15 @@ class WritingPipeline:
         Args:
             project_root: Root directory of the project (for agent specs)
             models: Custom models per provider (overrides defaults)
+            cite_assist_url: URL for cite-assist API (default: from env or localhost:8000)
+            cite_assist_library_id: Zotero library ID for cite-assist queries
+            use_cite_assist: Whether to query cite-assist for local citations
         """
         self.project_root = project_root
         self.models = models
+        self.use_cite_assist = use_cite_assist
+        self.cite_assist_url = cite_assist_url
+        self.cite_assist_library_id = cite_assist_library_id
 
         # Initialize agents
         self.drafter = DrafterAgent(project_root=project_root, models=models)
@@ -103,6 +116,22 @@ class WritingPipeline:
         started_at = datetime.now()
         total_start = time.perf_counter()
 
+        # =====================================================================
+        # Pre-Phase: Query cite-assist for local citations
+        # =====================================================================
+        local_citations: list[LocalCitation] = []
+        if self.use_cite_assist:
+            self._notify(
+                on_progress, "research", "starting", message="Querying local citation database"
+            )
+            local_citations = await self._query_cite_assist(topic)
+            self._notify(
+                on_progress,
+                "research",
+                "completed",
+                message=f"Found {len(local_citations)} relevant citations",
+            )
+
         # Build drafter input
         drafter_input = DrafterInput(
             topic=topic,
@@ -111,6 +140,7 @@ class WritingPipeline:
             source_files=source_files or [],
             target_length=target_length,
             audience=audience,
+            local_citations=local_citations,
         )
 
         # =====================================================================
@@ -404,3 +434,58 @@ class WritingPipeline:
             started_at=started_at,
             completed_at=datetime.now(),
         )
+
+    async def _query_cite_assist(
+        self,
+        topic: str,
+        max_results: int = 10,
+        min_score: float = 0.3,
+    ) -> list[LocalCitation]:
+        """
+        Query cite-assist for relevant local citations.
+
+        Args:
+            topic: The topic to search for
+            max_results: Maximum number of citations to return
+            min_score: Minimum relevance score threshold
+
+        Returns:
+            List of LocalCitation objects
+        """
+        try:
+            async with CiteAssistClient(
+                base_url=self.cite_assist_url,
+                library_id=self.cite_assist_library_id,
+            ) as client:
+                response = await client.search(
+                    query=topic,
+                    max_results=max_results,
+                    min_score=min_score,
+                    output_mode="chunks",
+                )
+
+                # Convert to LocalCitation format
+                citations = []
+                for result in response.results:
+                    citations.append(
+                        LocalCitation(
+                            id=result.id,
+                            title=result.title,
+                            authors=result.authors,
+                            year=result.year,
+                            journal=result.journal,
+                            volume=result.volume,
+                            pages=result.pages,
+                            relevance_score=result.score,
+                            relevant_text=result.relevant_text,
+                        )
+                    )
+
+                return citations
+
+        except CiteAssistUnavailable as e:
+            logger.warning(f"cite-assist unavailable: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"Error querying cite-assist: {e}")
+            return []

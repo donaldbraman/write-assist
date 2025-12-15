@@ -1,8 +1,8 @@
 # cite-assist Integration Guide
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Last Updated:** 2025-12-15
-**Status:** Stub - implementation pending
+**Status:** Implemented
 
 ## Overview
 
@@ -13,14 +13,14 @@ write-assist integrates with cite-assist to query the local citation database du
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  write-assist   │────▶│   cite-assist   │────▶│     Qdrant      │
-│  Drafter Agent  │     │   Search API    │     │  Vector Store   │
+│    Pipeline     │     │   v3 Search API │     │  Vector Store   │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-                               │
-                               ▼
-                        ┌─────────────────┐
-                        │     Zotero      │
-                        │  (metadata)     │
-                        └─────────────────┘
+        │                       │
+        ▼                       ▼
+┌─────────────────┐     ┌─────────────────┐
+│  Drafter Agent  │     │     Zotero      │
+│  (with citations)│     │  (metadata)     │
+└─────────────────┘     └─────────────────┘
 ```
 
 ## Prerequisites
@@ -33,24 +33,22 @@ write-assist integrates with cite-assist to query the local citation database du
    - cite-assist API endpoint accessible
    - Default: `http://localhost:8000`
 
-## Planned API Endpoints
+## API Integration
 
-### Search Citations
+### v3 Search Endpoint
 
 ```
-POST /api/v1/search
+POST /api/v3/search
 ```
 
 **Request:**
 ```json
 {
   "query": "prosecutor discretion charging decisions",
-  "limit": 10,
-  "filters": {
-    "year_min": 2010,
-    "year_max": 2024,
-    "item_types": ["journalArticle", "book"]
-  }
+  "library_id": 5673253,
+  "max_results": 10,
+  "min_score": 0.3,
+  "output_mode": "chunks"
 }
 ```
 
@@ -59,83 +57,93 @@ POST /api/v1/search
 {
   "results": [
     {
-      "id": "zotero://select/items/ABC123",
+      "id": "SCC7P3FV",
       "title": "The Prosecutor's Discretion",
+      "result_type": "chunk",
+      "score": 0.85,
+      "chunk_text": "Prosecutorial discretion allows...",
+      "chunk_index": 5,
       "authors": ["Smith, John", "Doe, Jane"],
       "year": 2020,
       "journal": "Harvard Law Review",
-      "volume": 100,
-      "pages": "1-50",
-      "abstract": "This article examines...",
-      "relevance_score": 0.89,
-      "citation_bluebook": "John Smith & Jane Doe, *The Prosecutor's Discretion*, 100 Harv. L. Rev. 1 (2020)."
+      "volume": "100",
+      "pages": "1-50"
     }
   ],
   "total": 45,
-  "query_time_ms": 120
+  "query_time_ms": 372
 }
 ```
 
-### Get Citation by ID
+## Usage
 
-```
-GET /api/v1/citation/{zotero_id}
-```
-
-**Response:**
-```json
-{
-  "id": "zotero://select/items/ABC123",
-  "metadata": { ... },
-  "citation_formats": {
-    "bluebook_full": "...",
-    "bluebook_short": "...",
-    "chicago": "..."
-  }
-}
-```
-
-## Usage in Drafter Agent
+### Python Client
 
 ```python
-# Pseudocode for drafter agent integration
+from write_assist.citations import CiteAssistClient, CiteAssistUnavailable
 
-async def research_topic(topic: str) -> list[Citation]:
-    """Query cite-assist for relevant citations."""
-
-    # Search local database
-    results = await cite_assist_client.search(
-        query=topic,
-        limit=20,
-        filters={"year_min": 2000}
+async with CiteAssistClient() as client:
+    # Search for citations
+    response = await client.search(
+        query="prosecutorial discretion",
+        max_results=10,
+        min_score=0.3,
+        output_mode="chunks"
     )
 
-    # Filter to most relevant
-    relevant = [r for r in results if r.relevance_score > 0.7]
+    for result in response.results:
+        print(f"{result.title} (score: {result.score})")
+        print(f"  {result.to_bluebook()}")
+```
 
-    # Return formatted citations
-    return [
-        Citation(
-            id=r.id,
-            full=r.citation_bluebook,
-            short=generate_short_form(r),
-            abstract=r.abstract
-        )
-        for r in relevant
-    ]
+### Pipeline Integration
+
+The `WritingPipeline` automatically queries cite-assist before drafting:
+
+```python
+from write_assist.pipeline import WritingPipeline
+
+# Create pipeline with cite-assist enabled (default)
+pipeline = WritingPipeline(
+    cite_assist_url="http://localhost:8000",
+    cite_assist_library_id=5673253,
+    use_cite_assist=True  # default
+)
+
+# Run pipeline - citations fetched automatically
+result = await pipeline.run(
+    topic="The doctrine of consideration",
+    document_type="article",
+    section_outline="1. Introduction\n2. History\n3. Conclusion"
+)
+```
+
+### Disabling cite-assist
+
+```python
+# Disable cite-assist queries
+pipeline = WritingPipeline(use_cite_assist=False)
 ```
 
 ## Configuration
 
-```python
-# src/write_assist/config.py
+### Environment Variables
 
-CITE_ASSIST_CONFIG = {
-    "base_url": "http://localhost:8000",
-    "timeout": 30,
-    "default_limit": 10,
-    "min_relevance": 0.5,
-}
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CITE_ASSIST_URL` | API base URL | `http://localhost:8000` |
+| `CITE_ASSIST_LIBRARY_ID` | Zotero library ID | `5673253` |
+
+### Python Configuration
+
+```python
+from write_assist.citations import CiteAssistClient
+
+client = CiteAssistClient(
+    base_url="http://localhost:8000",
+    library_id=5673253,
+    timeout=30.0,
+)
 ```
 
 ## Fallback Behavior
@@ -143,20 +151,67 @@ CITE_ASSIST_CONFIG = {
 If cite-assist is unavailable:
 
 1. Log warning
-2. Continue with web-only research
-3. Note in output that local database was not queried
+2. Continue with empty citations list
+3. Pipeline proceeds without local citations
 
 ```python
-try:
-    local_results = await cite_assist_client.search(query)
-except CiteAssistUnavailable:
-    logger.warning("cite-assist unavailable, using web-only research")
-    local_results = []
+# Safe search that never raises
+response = await client.search_safe("query")  # Returns empty on failure
+
+# Health check
+is_available = await client.health_check()
+```
+
+## Data Models
+
+### CitationResult
+
+```python
+from write_assist.citations import CitationResult
+
+result = CitationResult(
+    id="SCC7P3FV",
+    title="The Test Article",
+    result_type="chunk",
+    score=0.85,
+    chunk_text="...",
+    authors=["John Smith"],
+    year=2020,
+    journal="Harvard Law Review",
+    volume="100",
+    pages="1-50",
+)
+
+# Format in Bluebook style
+print(result.to_bluebook())
+# John Smith, *The Test Article*, 100 Harvard Law Review 1-50 (2020).
+
+# Get relevant text
+print(result.relevant_text)  # chunk_text or summary
+```
+
+### LocalCitation (for Drafter)
+
+```python
+from write_assist.agents.models import LocalCitation
+
+citation = LocalCitation(
+    id="SCC7P3FV",
+    title="The Test Article",
+    authors=["John Smith"],
+    year=2020,
+    journal="Harvard Law Review",
+    volume="100",
+    pages="1-50",
+    relevance_score=0.85,
+    relevant_text="..."
+)
 ```
 
 ## Future Enhancements
 
-- [ ] Implement actual API client
+- [x] Implement API client
+- [x] Add graceful fallback
 - [ ] Add caching layer for repeated queries
 - [ ] Support batch queries for efficiency
 - [ ] Add citation verification endpoint
@@ -165,7 +220,7 @@ except CiteAssistUnavailable:
 ## Related Documentation
 
 - [cite-assist CLAUDE.md](https://github.com/donaldbraman/cite-assist/blob/main/CLAUDE.md)
-- [cite-assist API documentation](https://github.com/donaldbraman/cite-assist/blob/main/docs/api.md) (when available)
+- [cite-assist pin-citer integration](https://github.com/donaldbraman/cite-assist/blob/main/docs/guides/pin-citer-integration.md)
 
 ---
 

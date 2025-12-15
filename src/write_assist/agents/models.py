@@ -40,6 +40,20 @@ class Citation(BaseModel):
 # =============================================================================
 
 
+class LocalCitation(BaseModel):
+    """A citation from cite-assist local database."""
+
+    id: str
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    journal: str | None = None
+    volume: str | None = None
+    pages: str | None = None
+    relevance_score: float
+    relevant_text: str  # Chunk or summary from cite-assist
+
+
 class DrafterInput(BaseModel):
     """Input contract for the drafter agent."""
 
@@ -50,6 +64,10 @@ class DrafterInput(BaseModel):
     target_length: int | None = None
     audience: str = "Legal academics and practitioners"
     style_variant: str = "standard"
+    local_citations: list[LocalCitation] = Field(
+        default_factory=list,
+        description="Pre-fetched citations from cite-assist",
+    )
 
 
 class Draft(BaseModel):

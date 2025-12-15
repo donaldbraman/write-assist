@@ -5,7 +5,7 @@ Creates initial drafts of legal academic writing with research and citations.
 """
 
 from write_assist.agents.base import BaseAgent
-from write_assist.agents.models import DrafterInput, DraftResult
+from write_assist.agents.models import DrafterInput, DraftResult, LocalCitation
 
 
 class DrafterAgent(BaseAgent[DrafterInput, DraftResult]):
@@ -37,7 +37,14 @@ class DrafterAgent(BaseAgent[DrafterInput, DraftResult]):
             f"{inputs.target_length} words" if inputs.target_length else "Appropriate for section"
         )
 
+        # Format local citations from cite-assist
+        if inputs.local_citations:
+            citations_section = self._format_local_citations(inputs.local_citations)
+        else:
+            citations_section = ""
+
         return f"""You are a legal academic writing assistant creating a draft for a {inputs.document_type}.
+{citations_section}
 
 ## Context
 
@@ -122,3 +129,39 @@ Return a JSON object with this exact structure:
 - Structure should follow academic legal writing conventions
 
 Now create the draft. Respond ONLY with the JSON object."""
+
+    def _format_local_citations(self, citations: list[LocalCitation]) -> str:
+        """Format local citations from cite-assist for inclusion in prompt."""
+        if not citations:
+            return ""
+
+        lines = [
+            "\n## Local Citation Database Results",
+            "",
+            "The following relevant sources were found in the local academic database.",
+            "**Use these sources when relevant, citing them as 'cite-assist' source.**",
+            "",
+        ]
+
+        for i, cit in enumerate(citations, 1):
+            # Format authors
+            authors = " & ".join(cit.authors) if cit.authors else "Unknown"
+
+            # Format citation line
+            year_str = f" ({cit.year})" if cit.year else ""
+            if cit.journal:
+                vol_str = f"{cit.volume} " if cit.volume else ""
+                pages_str = f" {cit.pages}" if cit.pages else ""
+                bluebook = f"{authors}, *{cit.title}*, {vol_str}{cit.journal}{pages_str}{year_str}."
+            else:
+                bluebook = f"{authors}, {cit.title.upper()}{year_str}."
+
+            lines.append(f"### {i}. {cit.title}")
+            lines.append(f"**Citation:** {bluebook}")
+            lines.append(f"**Relevance:** {cit.relevance_score:.2f}")
+            lines.append("")
+            lines.append("**Excerpt:**")
+            lines.append(f"> {cit.relevant_text[:500]}...")
+            lines.append("")
+
+        return "\n".join(lines)
