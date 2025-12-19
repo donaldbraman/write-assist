@@ -84,6 +84,14 @@ class DrafterInput(BaseModel):
         default_factory=list,
         description="Pre-fetched citations from cite-assist",
     )
+    max_research_steps: int = Field(
+        default=3,
+        description="Maximum number of research/search steps to take",
+    )
+    research_context: list[str] = Field(
+        default_factory=list,
+        description="Context gathered from research phase",
+    )
 
 
 class Draft(BaseModel):
